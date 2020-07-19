@@ -182,13 +182,36 @@
     ///
     /// #EXT-X-KEY:METHOD=AES-128,URI="...",IV=...
     ///
-    [[indexFileContents mcs_textCheckingResultsByMatchPattern:@"#EXT-X-KEY:METHOD=AES-128,URI=\"(.*)\""] enumerateObjectsWithOptions:NSEnumerationReverse usingBlock:^(NSTextCheckingResult * _Nonnull result, NSUInteger idx, BOOL * _Nonnull stop) {
+    [[indexFileContents mcs_textCheckingResultsByMatchPattern:@"#EXT-X-KEY:METHOD=AES-128,URI=\"(.*)\",IV=\\w+"] enumerateObjectsWithOptions:NSEnumerationReverse usingBlock:^(NSTextCheckingResult * _Nonnull result, NSUInteger idx, BOOL * _Nonnull stop) {
+        if (idx != 0){
+            NSRange URIRange = [result rangeAtIndex:0];
+            [indexFileContents replaceCharactersInRange:URIRange withString:@""];
+            return;
+        }
         NSRange URIRange = [result rangeAtIndex:1];
         NSString *URI = [indexFileContents substringWithRange:URIRange];
         NSString *url = [self _urlWithMatchedString:URI indexURL:request.URL];
         NSString *proxy = [MCSURLRecognizer.shared proxyAESKeyURIWithUrl:url inResource:self.resourceName];
         [indexFileContents replaceCharactersInRange:URIRange withString:proxy];
     }];
+    
+    NSArray<NSValue *> *TARGETDURATIONRanges = [contents mcs_rangesByMatchingPattern:@"#EXTINF:\\d+(.\\d+)?,"];
+    NSRange rangeValue = TARGETDURATIONRanges.firstObject.rangeValue;
+    NSString *matched = nil;
+    if (rangeValue.location != NSNotFound && contents.length >= (rangeValue.location + rangeValue.length)){
+        matched = [contents substringWithRange:rangeValue];
+        matched = [matched substringWithRange:NSMakeRange(8, matched.length-8-1)];
+    }
+    
+    if (matched){
+        [[indexFileContents mcs_textCheckingResultsByMatchPattern:@"#EXT-X-TARGETDURATION:\\d+(.\\d+)?"]enumerateObjectsWithOptions:NSEnumerationReverse usingBlock:^(NSTextCheckingResult * _Nonnull result, NSUInteger idx, BOOL * _Nonnull stop) {
+            if (idx == 0){
+                NSRange URIRange = [result rangeAtIndex:0];
+                [indexFileContents replaceCharactersInRange:URIRange withString:[NSString stringWithFormat:@"#EXT-X-TARGETDURATION:%@", @((int)ceil(matched.floatValue)).stringValue]];
+                return;
+            }
+        }];
+    }
     
     [MCSFileManager lockWithBlock:^{
         if ( ![MCSFileManager fileExistsAtPath:indexFilePath] ) {
